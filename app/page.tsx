@@ -50,14 +50,37 @@ export default function HomePage() {
     };
   }, [user, isAdmin]);
 
+  // Handle tab focus to prevent unnecessary reloading
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === "visible" &&
+        user &&
+        isAdmin &&
+        !metricsLoading
+      ) {
+        // Tab is visible and user is authenticated, no need to reload metrics
+        return;
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [user, isAdmin, metricsLoading]);
+
   // Add timeout to prevent infinite loading
   useEffect(() => {
     const timer = setTimeout(() => {
       if (loading || metricsLoading) {
         console.log("Loading timeout reached");
         setLoadingTimeout(true);
+        // Force stop loading after timeout
+        setMetricsLoading(false);
       }
-    }, 10000); // 10 second timeout
+    }, 5000); // 5 second timeout
 
     return () => clearTimeout(timer);
   }, [loading, metricsLoading]);
@@ -182,25 +205,92 @@ export default function HomePage() {
     <div className="admin-layout">
       <div className="admin-header">
         <div className="admin-logo">Miniway Admin Dashboard</div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
           {realtimeConnected && (
             <div className="realtime-indicator">
               <div className="realtime-dot"></div>
               Live
             </div>
           )}
-          <Text>Welcome, {user?.email}</Text>
-          <Button onClick={signOut}>Sign Out</Button>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "8px 16px",
+              background: "rgba(255, 255, 255, 0.1)",
+              borderRadius: "20px",
+              backdropFilter: "blur(10px)",
+            }}
+          >
+            <div
+              style={{
+                width: "32px",
+                height: "32px",
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontWeight: "600",
+                fontSize: "14px",
+              }}
+            >
+              {user?.email?.charAt(0).toUpperCase()}
+            </div>
+            <Text style={{ color: "#374151", fontWeight: "500" }}>
+              {user?.email}
+            </Text>
+          </div>
+          <Button
+            onClick={signOut}
+            style={{
+              background: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.2)",
+              color: "#dc2626",
+            }}
+          >
+            Sign Out
+          </Button>
         </div>
       </div>
 
       <div className="admin-content">
-        <Row gutter={[16, 16]} style={{ marginBottom: "24px" }}>
+        <Row gutter={[24, 24]} style={{ marginBottom: "32px" }}>
           <Col span={24}>
-            <Title level={2}>Dashboard Overview</Title>
-            <Text type="secondary">
-              Real-time monitoring of your Miniway transportation network
-            </Text>
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.1)",
+                padding: "32px",
+                borderRadius: "16px",
+                backdropFilter: "blur(10px)",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                textAlign: "center",
+              }}
+            >
+              <Title
+                level={1}
+                style={{
+                  color: "white",
+                  marginBottom: "12px",
+                  fontSize: "48px",
+                  fontWeight: "800",
+                  textShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                }}
+              >
+                Dashboard Overview
+              </Title>
+              <Text
+                style={{
+                  color: "rgba(255, 255, 255, 0.9)",
+                  fontSize: "18px",
+                  fontWeight: "500",
+                }}
+              >
+                Real-time monitoring of your Miniway transportation network
+              </Text>
+            </div>
           </Col>
         </Row>
 
@@ -220,34 +310,103 @@ export default function HomePage() {
           ))}
         </Row>
 
-        <Row gutter={[16, 16]}>
+        <Row gutter={[24, 24]}>
           <Col xs={24} lg={12}>
-            <Card title="Quick Actions" extra={<BarChartOutlined />} hoverable>
+            <Card
+              title={
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "12px" }}
+                >
+                  <BarChartOutlined
+                    style={{ color: "#6366f1", fontSize: "20px" }}
+                  />
+                  <span>Quick Actions</span>
+                </div>
+              }
+              hoverable
+            >
               <div
                 style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: "16px",
                 }}
               >
                 <Button
                   type="primary"
                   size="large"
                   onClick={() => router.push("/fleet")}
+                  style={{
+                    height: "60px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
                 >
-                  Manage Fleet
+                  <CarOutlined style={{ fontSize: "24px" }} />
+                  <span>Manage Fleet</span>
                 </Button>
-                <Button size="large" onClick={() => router.push("/trips")}>
-                  Monitor Trips
+                <Button
+                  size="large"
+                  onClick={() => router.push("/trips")}
+                  style={{
+                    height: "60px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <ClockCircleOutlined style={{ fontSize: "24px" }} />
+                  <span>Monitor Trips</span>
                 </Button>
-                <Button size="large" onClick={() => router.push("/routes")}>
-                  Route Management
+                <Button
+                  size="large"
+                  onClick={() => router.push("/routes")}
+                  style={{
+                    height: "60px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <CompassOutlined style={{ fontSize: "24px" }} />
+                  <span>Route Management</span>
                 </Button>
-                <Button size="large" onClick={() => router.push("/users")}>
-                  User Management
+                <Button
+                  size="large"
+                  onClick={() => router.push("/users")}
+                  style={{
+                    height: "60px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <TeamOutlined style={{ fontSize: "24px" }} />
+                  <span>User Management</span>
                 </Button>
-                <Button size="large" onClick={() => router.push("/analytics")}>
-                  Analytics & Reports
+                <Button
+                  size="large"
+                  onClick={() => router.push("/analytics")}
+                  style={{
+                    height: "60px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <BarChartOutlined style={{ fontSize: "24px" }} />
+                  <span>Analytics & Reports</span>
                 </Button>
               </div>
             </Card>
@@ -255,45 +414,179 @@ export default function HomePage() {
 
           <Col xs={24} lg={12}>
             <Card
-              title="System Status"
-              extra={<CheckCircleOutlined style={{ color: "#52c41a" }} />}
+              title={
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "12px" }}
+                >
+                  <CheckCircleOutlined
+                    style={{ color: "#10b981", fontSize: "20px" }}
+                  />
+                  <span>System Status</span>
+                </div>
+              }
             >
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: "12px",
+                  gap: "20px",
                 }}
               >
                 <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "16px",
+                    background: "rgba(16, 185, 129, 0.1)",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(16, 185, 129, 0.2)",
+                  }}
                 >
-                  <Text>Database Connection</Text>
-                  <Text style={{ color: "#52c41a" }}>Connected</Text>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "12px",
+                        height: "12px",
+                        borderRadius: "50%",
+                        background: "#10b981",
+                      }}
+                    ></div>
+                    <Text style={{ fontWeight: "600" }}>
+                      Database Connection
+                    </Text>
+                  </div>
+                  <Text style={{ color: "#10b981", fontWeight: "600" }}>
+                    Connected
+                  </Text>
                 </div>
                 <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "16px",
+                    background: realtimeConnected
+                      ? "rgba(16, 185, 129, 0.1)"
+                      : "rgba(239, 68, 68, 0.1)",
+                    borderRadius: "12px",
+                    border: realtimeConnected
+                      ? "1px solid rgba(16, 185, 129, 0.2)"
+                      : "1px solid rgba(239, 68, 68, 0.2)",
+                  }}
                 >
-                  <Text>Real-time Updates</Text>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "12px",
+                        height: "12px",
+                        borderRadius: "50%",
+                        background: realtimeConnected ? "#10b981" : "#ef4444",
+                      }}
+                    ></div>
+                    <Text style={{ fontWeight: "600" }}>Real-time Updates</Text>
+                  </div>
                   <Text
-                    style={{ color: realtimeConnected ? "#52c41a" : "#ff4d4f" }}
+                    style={{
+                      color: realtimeConnected ? "#10b981" : "#ef4444",
+                      fontWeight: "600",
+                    }}
                   >
                     {realtimeConnected ? "Active" : "Inactive"}
                   </Text>
                 </div>
                 <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "16px",
+                    background: "rgba(59, 130, 246, 0.1)",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(59, 130, 246, 0.2)",
+                  }}
                 >
-                  <Text>Completed Trips (Today)</Text>
-                  <Text style={{ color: "#1890ff" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
+                    <CheckCircleOutlined
+                      style={{ color: "#3b82f6", fontSize: "16px" }}
+                    />
+                    <Text style={{ fontWeight: "600" }}>
+                      Completed Trips (Today)
+                    </Text>
+                  </div>
+                  <Text
+                    style={{
+                      color: "#3b82f6",
+                      fontWeight: "700",
+                      fontSize: "18px",
+                    }}
+                  >
                     {metrics?.completedTrips || 0}
                   </Text>
                 </div>
                 <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "16px",
+                    background: "rgba(239, 68, 68, 0.1)",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(239, 68, 68, 0.2)",
+                  }}
                 >
-                  <Text>Cancelled Trips (Today)</Text>
-                  <Text style={{ color: "#ff4d4f" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "16px",
+                        height: "16px",
+                        borderRadius: "50%",
+                        background: "#ef4444",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "white",
+                        fontSize: "10px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      ✕
+                    </div>
+                    <Text style={{ fontWeight: "600" }}>
+                      Cancelled Trips (Today)
+                    </Text>
+                  </div>
+                  <Text
+                    style={{
+                      color: "#ef4444",
+                      fontWeight: "700",
+                      fontSize: "18px",
+                    }}
+                  >
                     {metrics?.cancelledTrips || 0}
                   </Text>
                 </div>

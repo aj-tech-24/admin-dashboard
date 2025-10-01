@@ -1,4 +1,4 @@
-// File: D:\React Native\miniway\admin-dashboard\app\page.tsx
+// File: D:\React Native\admin-dashboard\app\page.tsx
 import * as entry from '../../../app/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

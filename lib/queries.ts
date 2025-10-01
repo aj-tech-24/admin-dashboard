@@ -72,7 +72,7 @@ export const getFleetStatus = async () => {
         start_address,
         end_address
       ),
-      driver:users (
+      driver:users!fk_driver (
         id,
         fullName,
         contact_number
@@ -102,18 +102,24 @@ export const getAllBuses = async () => {
       status,
       route_id,
       driver_id,
+      conductor_id,
       routes (
         id,
         name,
         start_address,
         end_address
       ),
-      driver:users (
+      driver:users!fk_driver (
         id,
         fullName,
         contact_number,
         license_number,
         license_expiry
+      ),
+      conductor:users!buses_conductor_id_fkey (
+        id,
+        fullName,
+        contact_number
       )
     `
     )
@@ -153,7 +159,7 @@ export const getActiveTrips = async () => {
           end_address
         )
       ),
-      driver:users (
+      driver:users!trips_driver_id_fkey (
         id,
         fullName,
         contact_number
@@ -194,7 +200,7 @@ export const getTripHistory = async (limit = 50) => {
           name
         )
       ),
-      driver:users (
+      driver:users!trips_driver_id_fkey (
         id,
         fullName
       ),
@@ -359,7 +365,8 @@ export const getRouteUtilization = async () => {
 };
 
 export const getTravelHistory = async (limit = 100) => {
-  const { data, error } = await supabase
+  // Try to get from travel_history_commuter table with proper join
+  const { data: commuterData, error: commuterError } = await supabase
     .from("travel_history_commuter")
     .select(
       `
@@ -369,7 +376,6 @@ export const getTravelHistory = async (limit = 100) => {
       travel_date,
       route_name,
       status,
-      created_at,
       user:users (
         id,
         fullName
@@ -379,7 +385,63 @@ export const getTravelHistory = async (limit = 100) => {
     .order("travel_date", { ascending: false })
     .limit(limit);
 
-  return { data, error };
+  // If successful, return the data
+  if (commuterData && !commuterError) {
+    return { data: commuterData, error: null };
+  }
+
+  // If travel_history_commuter table doesn't exist, fall back to trips table
+  if (commuterError && commuterError.code === "PGRST200") {
+    const { data: tripsData, error: tripsError } = await supabase
+      .from("trips")
+      .select(
+        `
+        id,
+        status,
+        started_at,
+        ended_at,
+        buses (
+          routes (
+            name,
+            start_address,
+            end_address
+          )
+        ),
+        driver:users!trips_driver_id_fkey (
+          id,
+          fullName
+        )
+      `
+      )
+      .in("status", ["completed", "cancelled"])
+      .order("started_at", { ascending: false })
+      .limit(limit);
+
+    if (tripsError) {
+      return { data: null, error: tripsError };
+    }
+
+    // Transform trips data to match expected format
+    const transformedData =
+      tripsData?.map((trip) => ({
+        id: trip.id,
+        start_location_name:
+          (trip.buses as any)?.routes?.start_address || "Unknown",
+        end_location_name:
+          (trip.buses as any)?.routes?.end_address || "Unknown",
+        travel_date:
+          trip.started_at?.split("T")[0] ||
+          new Date().toISOString().split("T")[0],
+        route_name: (trip.buses as any)?.routes?.name || "Unknown Route",
+        status: trip.status,
+        created_at: trip.started_at,
+        user: trip.driver,
+      })) || [];
+
+    return { data: transformedData, error: null };
+  }
+
+  return { data: commuterData, error: commuterError };
 };
 
 // Update Operations
