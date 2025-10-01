@@ -1,5 +1,8 @@
 import { DashboardMetrics, supabase } from "./supabase";
 
+// Re-export types for use in components
+export type { DashboardMetrics };
+
 // Dashboard Metrics Queries
 export const getDashboardMetrics = async (): Promise<DashboardMetrics> => {
   const [

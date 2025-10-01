@@ -113,8 +113,25 @@ export default function TripsPage() {
       if (activeResult.error) throw activeResult.error;
       if (historyResult.error) throw historyResult.error;
 
-      setActiveTrips(activeResult.data || []);
-      setTripHistory(historyResult.data || []);
+      // Transform data to match interface expectations
+      const transformedActiveTrips = (activeResult.data || []).map(
+        (trip: any) => ({
+          ...trip,
+          buses: Array.isArray(trip.buses) ? trip.buses[0] : trip.buses,
+          driver: Array.isArray(trip.driver) ? trip.driver[0] : trip.driver,
+        })
+      );
+
+      const transformedHistoryTrips = (historyResult.data || []).map(
+        (trip: any) => ({
+          ...trip,
+          buses: Array.isArray(trip.buses) ? trip.buses[0] : trip.buses,
+          driver: Array.isArray(trip.driver) ? trip.driver[0] : trip.driver,
+        })
+      );
+
+      setActiveTrips(transformedActiveTrips);
+      setTripHistory(transformedHistoryTrips);
     } catch (error) {
       console.error("Error loading trips data:", error);
       message.error("Failed to load trips data");

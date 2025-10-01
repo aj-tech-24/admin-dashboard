@@ -46,6 +46,7 @@ interface Bus {
   status: "active" | "inactive";
   route_id: string;
   driver_id?: string;
+  conductor_id?: string;
   routes?: {
     id: string;
     name: string;
@@ -58,6 +59,11 @@ interface Bus {
     contact_number?: string;
     license_number?: string;
     license_expiry?: string;
+  };
+  conductor?: {
+    id: string;
+    fullName: string;
+    contact_number?: string;
   };
 }
 
@@ -110,7 +116,17 @@ export default function FleetPage() {
       if (busesResult.error) throw busesResult.error;
       if (driversResult.error) throw driversResult.error;
 
-      setBuses(busesResult.data || []);
+      // Transform the data to match the expected interface
+      const transformedBuses = (busesResult.data || []).map((bus: any) => ({
+        ...bus,
+        routes: Array.isArray(bus.routes) ? bus.routes[0] : bus.routes,
+        driver: Array.isArray(bus.driver) ? bus.driver[0] : bus.driver,
+        conductor: Array.isArray(bus.conductor)
+          ? bus.conductor[0]
+          : bus.conductor,
+      }));
+
+      setBuses(transformedBuses);
       setDrivers(driversResult.data || []);
     } catch (error) {
       console.error("Error loading fleet data:", error);
