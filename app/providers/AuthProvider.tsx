@@ -204,6 +204,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== "undefined") {
         localStorage.clear();
         sessionStorage.clear();
+
+        // Redirect to login page immediately
+        window.location.replace("/login");
       }
     } finally {
       setLoading(false);

@@ -29,16 +29,20 @@ export default function HomePage() {
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [loadingTimeout, setLoadingTimeout] = useState(false);
 
+  // Handle authentication redirect immediately
   useEffect(() => {
     console.log("Auth state:", { loading, user: !!user, isAdmin });
 
-    if (!loading && !user) {
-      console.log("No user found, redirecting to login");
-      router.push("/login");
-    } else if (!loading && user && !isAdmin) {
-      console.log("User found but not admin, signing out");
-      message.error("Access denied. Admin privileges required.");
-      signOut();
+    // Only redirect when auth check is complete (not loading)
+    if (!loading) {
+      if (!user) {
+        console.log("No user found, redirecting to login");
+        router.replace("/login"); // Use replace for faster navigation
+      } else if (!isAdmin) {
+        console.log("User found but not admin, signing out");
+        message.error("Access denied. Admin privileges required.");
+        signOut();
+      }
     }
   }, [user, loading, isAdmin, router, signOut]);
 
@@ -60,13 +64,17 @@ export default function HomePage() {
 
   // Reduce timeout and improve error handling
   useEffect(() => {
+    // Reset timeout flag when loading starts
+    if (loading || metricsLoading) {
+      setLoadingTimeout(false);
+    }
+
     const timer = setTimeout(() => {
       if (loading || metricsLoading) {
         console.warn("Loading timeout reached - check your connection");
         setLoadingTimeout(true);
-        // Don't force stop loading, just show warning
       }
-    }, 10000); // Increased to 10 seconds for better UX
+    }, 10000);
 
     return () => clearTimeout(timer);
   }, [loading, metricsLoading]);
@@ -110,8 +118,30 @@ export default function HomePage() {
     setRealtimeConnected(true);
   };
 
-  // Only show loading screen during initial authentication or first metrics load
-  if ((loading && !user) || (metricsLoading && !metrics)) {
+  // Show minimal loading during initial auth check only
+  if (loading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)",
+        }}
+      >
+        <Spin size="large" style={{ color: "white" }} />
+      </div>
+    );
+  }
+
+  // If not authenticated, return null (redirect will happen via useEffect)
+  if (!user || !isAdmin) {
+    return null;
+  }
+
+  // Show premium loading screen only for metrics (after auth confirmed)
+  if (metricsLoading && !metrics) {
     return (
       <div
         style={{
@@ -139,8 +169,7 @@ export default function HomePage() {
               Loading Dashboard...
             </div>
             <div style={{ fontSize: "14px", color: "#64748b", marginTop: "8px" }}>
-              {loading && "Authenticating..."}
-              {!loading && metricsLoading && "Loading metrics..."}
+              Loading metrics...
             </div>
             {loadingTimeout && (
               <div
@@ -160,10 +189,6 @@ export default function HomePage() {
         </div>
       </div>
     );
-  }
-
-  if (!user || !isAdmin) {
-    return null;
   }
 
   const metricCards = [
