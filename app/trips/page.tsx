@@ -5,8 +5,10 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
+  DashboardOutlined,
   EyeOutlined,
   ReloadOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -78,6 +80,7 @@ export default function TripsPage() {
   const [activeTrips, setActiveTrips] = useState<Trip[]>([]);
   const [tripHistory, setTripHistory] = useState<Trip[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false); // Track if data already loaded
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [form] = Form.useForm();
@@ -92,15 +95,20 @@ export default function TripsPage() {
   }, [user, loading, isAdmin, router]);
 
   useEffect(() => {
-    if (user && isAdmin) {
+    let isSubscribed = true;
+
+    if (user && isAdmin && !dataLoaded && isSubscribed) {
+      console.log("Loading trips data for the first time");
       loadData();
       setupRealtime();
+      setDataLoaded(true);
     }
 
     return () => {
+      isSubscribed = false;
       realtimeManager.unsubscribe("trips");
     };
-  }, [user, isAdmin]);
+  }, [user, isAdmin, dataLoaded]);
 
   const loadData = async () => {
     try {
@@ -139,11 +147,11 @@ export default function TripsPage() {
       setLoadingData(false);
     }
   };
-
   const setupRealtime = () => {
     realtimeManager.subscribeToTrips({
       onTripUpdate: (payload) => {
-        loadData(); // Refresh data when trips change
+        // Silently refresh data in background (no loading screen)
+        loadData();
       },
     });
   };
@@ -381,7 +389,8 @@ export default function TripsPage() {
     (trip) => trip.status === "cancelled"
   ).length;
 
-  if (loading || loadingData) {
+  // Only show loading screen during initial authentication or first data load
+  if ((loading && !user) || (loadingData && !dataLoaded)) {
     return (
       <div
         style={{
@@ -398,76 +407,351 @@ export default function TripsPage() {
 
   return (
     <div className="admin-layout">
+      {/* Enhanced Header */}
       <div className="admin-header">
-        <div className="admin-logo">Miniway Admin Dashboard</div>
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <Button onClick={() => router.push("/")}>Dashboard</Button>
-          <Button onClick={loadData} icon={<ReloadOutlined />}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+            }}
+            onClick={() => router.push("/")}
+          >
+            <div
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "12px",
+                background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 4px 12px rgba(17, 153, 142, 0.4)",
+              }}
+            >
+              <ClockCircleOutlined style={{ fontSize: "22px", color: "white" }} />
+            </div>
+            <div>
+              <div
+                style={{
+                  fontSize: "20px",
+                  fontWeight: 800,
+                  background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  letterSpacing: "-0.5px",
+                  lineHeight: 1.2,
+                }}
+              >
+                Trips
+              </div>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#64748b",
+                  fontWeight: 500,
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Live Monitoring
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          {/* Live indicator */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "8px 16px",
+              background: "linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(52, 211, 153, 0.1) 100%)",
+              border: "1px solid rgba(16, 185, 129, 0.2)",
+              borderRadius: "24px",
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "#059669",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}
+          >
+            <div
+              style={{
+                width: "8px",
+                height: "8px",
+                background: "#10b981",
+                borderRadius: "50%",
+                animation: "pulse 2s infinite",
+              }}
+            />
+            Live
+          </div>
+          <Button
+            onClick={() => router.push("/")}
+            icon={<DashboardOutlined />}
+            style={{
+              background: "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)",
+              border: "1px solid rgba(99, 102, 241, 0.2)",
+              color: "#6366f1",
+              borderRadius: "12px",
+              fontWeight: 600,
+              height: "40px",
+            }}
+          >
+            Dashboard
+          </Button>
+          <Button
+            onClick={loadData}
+            icon={<ReloadOutlined spin={loadingData} />}
+            type="primary"
+            style={{
+              background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+              border: "none",
+              borderRadius: "12px",
+              fontWeight: 600,
+              height: "40px",
+              boxShadow: "0 4px 12px rgba(17, 153, 142, 0.4)",
+            }}
+          >
             Refresh
           </Button>
         </div>
       </div>
 
       <div className="admin-content">
-        <Row gutter={[16, 16]} style={{ marginBottom: "24px" }}>
+        {/* Hero Section */}
+        <Row gutter={[24, 24]} style={{ marginBottom: "32px" }}>
           <Col span={24}>
-            <Title level={2}>Trip Management</Title>
-            <Text type="secondary">
-              Monitor active trips and view trip history
-            </Text>
+            <div
+              style={{
+                background: "linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%)",
+                padding: "40px",
+                borderRadius: "24px",
+                backdropFilter: "blur(20px)",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                textAlign: "center",
+                position: "relative",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: "-50px",
+                  right: "-50px",
+                  width: "200px",
+                  height: "200px",
+                  borderRadius: "50%",
+                  background: "radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%)",
+                }}
+              />
+              <Title
+                level={1}
+                style={{
+                  color: "white",
+                  marginBottom: "12px",
+                  fontSize: "42px",
+                  fontWeight: 800,
+                  textShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                  position: "relative",
+                }}
+              >
+                🚌 Trip Management
+              </Title>
+              <Text
+                style={{
+                  color: "rgba(255, 255, 255, 0.9)",
+                  fontSize: "18px",
+                  fontWeight: 500,
+                  position: "relative",
+                }}
+              >
+                Monitor active trips and view trip history in real-time
+              </Text>
+            </div>
           </Col>
         </Row>
 
-        <Row gutter={[16, 16]} style={{ marginBottom: "24px" }}>
+        {/* Statistics Cards */}
+        <Row gutter={[20, 20]} style={{ marginBottom: "32px" }}>
           <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="Waiting Trips"
-                value={waitingTrips}
-                prefix={<ClockCircleOutlined style={{ color: "#1890ff" }} />}
-                valueStyle={{ color: "#1890ff" }}
-              />
-            </Card>
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "20px",
+                padding: "24px",
+                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "16px",
+                    background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 8px 16px rgba(59, 130, 246, 0.3)",
+                  }}
+                >
+                  <ClockCircleOutlined style={{ fontSize: "24px", color: "white" }} />
+                </div>
+              </div>
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ fontSize: "36px", fontWeight: 800, color: "#1e293b", lineHeight: 1 }}>
+                  {waitingTrips}
+                </div>
+                <div style={{ fontSize: "14px", color: "#64748b", fontWeight: 500, marginTop: "4px" }}>
+                  Waiting Trips
+                </div>
+              </div>
+            </div>
           </Col>
           <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="Ongoing Trips"
-                value={ongoingTrips}
-                prefix={<CarOutlined style={{ color: "#52c41a" }} />}
-                valueStyle={{ color: "#52c41a" }}
-              />
-            </Card>
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "20px",
+                padding: "24px",
+                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "16px",
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 8px 16px rgba(16, 185, 129, 0.3)",
+                  }}
+                >
+                  <CarOutlined style={{ fontSize: "24px", color: "white" }} />
+                </div>
+              </div>
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ fontSize: "36px", fontWeight: 800, color: "#1e293b", lineHeight: 1 }}>
+                  {ongoingTrips}
+                </div>
+                <div style={{ fontSize: "14px", color: "#64748b", fontWeight: 500, marginTop: "4px" }}>
+                  Ongoing Trips
+                </div>
+              </div>
+            </div>
           </Col>
           <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="Completed Trips"
-                value={completedTrips}
-                prefix={<CheckCircleOutlined style={{ color: "#13c2c2" }} />}
-                valueStyle={{ color: "#13c2c2" }}
-              />
-            </Card>
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "20px",
+                padding: "24px",
+                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "16px",
+                    background: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 8px 16px rgba(6, 182, 212, 0.3)",
+                  }}
+                >
+                  <CheckCircleOutlined style={{ fontSize: "24px", color: "white" }} />
+                </div>
+              </div>
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ fontSize: "36px", fontWeight: 800, color: "#1e293b", lineHeight: 1 }}>
+                  {completedTrips}
+                </div>
+                <div style={{ fontSize: "14px", color: "#64748b", fontWeight: 500, marginTop: "4px" }}>
+                  Completed Trips
+                </div>
+              </div>
+            </div>
           </Col>
           <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="Cancelled Trips"
-                value={cancelledTrips}
-                prefix={<CloseCircleOutlined style={{ color: "#ff4d4f" }} />}
-                valueStyle={{ color: "#ff4d4f" }}
-              />
-            </Card>
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "20px",
+                padding: "24px",
+                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "16px",
+                    background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 8px 16px rgba(239, 68, 68, 0.3)",
+                  }}
+                >
+                  <CloseCircleOutlined style={{ fontSize: "24px", color: "white" }} />
+                </div>
+              </div>
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ fontSize: "36px", fontWeight: 800, color: "#1e293b", lineHeight: 1 }}>
+                  {cancelledTrips}
+                </div>
+                <div style={{ fontSize: "14px", color: "#64748b", fontWeight: 500, marginTop: "4px" }}>
+                  Cancelled Trips
+                </div>
+              </div>
+            </div>
           </Col>
         </Row>
 
-        <Card>
+        {/* Trips Table Card */}
+        <Card
+          style={{
+            borderRadius: "20px",
+            border: "none",
+            boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+          }}
+        >
           <Tabs
             defaultActiveKey="active"
             items={[
               {
                 key: "active",
-                label: `Active Trips (${activeTrips.length})`,
+                label: (
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div
+                      style={{
+                        width: "8px",
+                        height: "8px",
+                        borderRadius: "50%",
+                        background: "#10b981",
+                        animation: "pulse 2s infinite",
+                      }}
+                    />
+                    Active Trips ({activeTrips.length})
+                  </span>
+                ),
                 children: (
                   <Table
                     columns={activeColumns}
@@ -486,7 +770,12 @@ export default function TripsPage() {
               },
               {
                 key: "history",
-                label: `History (${tripHistory.length})`,
+                label: (
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <ClockCircleOutlined style={{ color: "#64748b" }} />
+                    History ({tripHistory.length})
+                  </span>
+                ),
                 children: (
                   <Table
                     columns={historyColumns}

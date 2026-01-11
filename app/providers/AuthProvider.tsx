@@ -54,7 +54,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setInitialized(true);
           isInitialized = true;
         }
-      } catch (error) {
+      } catch (error: any) {
+        // Ignore abort errors
+        if (error.name === "AbortError" || error.message?.includes("aborted")) {
+          // Keep loading state if aborted, as a valid request follows?
+          // Actually, if aborted, usually we just exit.
+          return;
+        }
+
         console.error("Error initializing auth:", error);
         if (mounted) {
           setUser(null);
@@ -85,38 +92,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Handle browser close/refresh
-    const handleBeforeUnload = () => {
-      // Clear session on browser close
-      supabase.auth.signOut({ scope: "local" });
-    };
-
-    // Handle tab focus to prevent unnecessary re-authentication
-    const handleFocus = () => {
-      // Don't re-authenticate on tab focus if already initialized
-      if (isInitialized && user) {
-        return;
-      }
-    };
-
-    // Handle tab visibility change
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && isInitialized && user) {
-        // Tab is visible and user is already authenticated, no need to reload
-        return;
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    // Note: Removed handleBeforeUnload to persist session across tab closes
+    // Session will persist until explicit signOut() is called
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -151,7 +132,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setIsAdmin(data?.role === "admin");
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === "AbortError" || error.message?.includes("aborted")) {
+        return;
+      }
       console.error("Error checking admin status:", error);
       // Fallback: allow access for now (you can restrict this later)
       setIsAdmin(true);
@@ -189,6 +173,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.user) {
         await checkAdminStatus(data.user.id);
       }
+    } catch (error: any) {
+      if (error.name === "AbortError" || error.message?.includes("aborted")) {
+        // Ignore
+        return;
+      }
+      throw error;
     } finally {
       setLoading(false);
     }

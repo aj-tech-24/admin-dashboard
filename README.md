@@ -129,6 +129,35 @@ The dashboard includes real-time updates for:
 - Completion and cancellation rates
 - Historical data analysis
 
+## Google Maps Integration
+
+The routes page now uses Google Maps for location selection. To enable this functionality:
+
+1. **Get a Google Maps API Key**:
+
+   - Go to the [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select an existing one
+   - Enable the "Maps JavaScript API"
+   - Create credentials (API Key)
+   - Optionally restrict the API key to your domain for security
+
+2. **Update Environment Variables**:
+
+   - Open `.env.local`
+   - Replace `your_google_maps_api_key_here` with your actual Google Maps API key:
+
+   ```
+   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_actual_api_key_here
+   ```
+
+3. **Features**:
+   - Click on the map to set start/end locations
+   - Use "Center My Location" button to center the map on your current position
+   - Custom markers show start (green) and end (red) locations
+   - Coordinates are automatically saved with routes
+
+**Note**: Make sure to run the `add-route-coordinates.sql` script in your Supabase SQL editor to add the coordinate columns to the routes table.
+
 ## Session Persistence Fixes
 
 The dashboard includes several improvements for session persistence:
@@ -159,6 +188,50 @@ The dashboard includes several improvements for session persistence:
 1. Run `npm install` to ensure all dependencies are installed
 2. Check TypeScript errors with `npm run build`
 3. Verify all environment variables are set
+
+## Troubleshooting Google Maps Issues
+
+If you see "This page didn't load Google Maps correctly", try these solutions:
+
+### 1. Check Your API Key
+
+- Ensure your `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in `.env.local` is correct
+- The API key should be unrestricted or properly configured for your domain
+
+### 2. Enable Required APIs
+
+In your [Google Cloud Console](https://console.cloud.google.com/):
+
+- Go to "APIs & Services" > "Library"
+- Enable "Maps JavaScript API"
+- Ensure billing is enabled on your project
+
+### 3. Check Browser Console
+
+- Open browser developer tools (F12)
+- Check the Console tab for specific error messages
+- Common errors:
+  - `google is not defined` - API key issue
+  - `Referer denied` - Domain restrictions
+  - `OVER_QUERY_LIMIT` - Quota exceeded
+
+### 4. Fallback Functionality
+
+If Google Maps fails to load, the application will:
+
+- Show a fallback message
+- Allow manual coordinate entry
+- Still save routes with coordinates
+
+### 5. Test API Key
+
+You can test your API key by visiting:
+
+```
+https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap
+```
+
+Replace `YOUR_API_KEY` with your actual key. If it loads a basic map, your key is working.
 
 ## Development
 

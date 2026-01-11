@@ -5,7 +5,7 @@ const supabaseUrl =
   "https://nbbtnqdvizaxajvaijbv.supabase.co";
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5iYnRucWR2aXpheGFqdmFpamJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQ5NzQ4MDAsImV4cCI6MjA1MDU1MDgwMH0.YourActualAnonKeyHere";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5iYnRucWR2aXpheGFqdmFpamJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0Njk3MjYsImV4cCI6MjA2ODA0NTcyNn0.nTNvDYvZgSErdEEX4GZ36BmGIsbHnMEqQZ40gKub6IU";
 
 // Create a custom storage adapter for web
 const createWebStorage = () => {
@@ -36,6 +36,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: false,
     flowType: "pkce",
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 2,
+    },
+    heartbeatIntervalMs: 30000,
+    reconnectAfterMs: function (tries: number, delay: number) {
+      return delay * Math.pow(1.5, tries);
+    },
   },
 });
 

@@ -135,7 +135,17 @@ export const getDrivers = async () => {
   const { data, error } = await supabase
     .from("users")
     .select("*")
-    .eq("role", "driver")
+    .in("role", ["driver", "Driver"])
+    .order("fullName");
+
+  return { data, error };
+};
+
+export const getConductors = async () => {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .in("role", ["conductor", "Conductor"])
     .order("fullName");
 
   return { data, error };
@@ -278,50 +288,88 @@ export const createRoute = async (routeData: {
   name: string;
   start_address: string;
   end_address: string;
+  path?: any;
 }) => {
-  const { data, error } = await supabase
-    .from("routes")
-    .insert({
-      ...routeData,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .select();
+  try {
+    // For PostGIS geography columns, we need to use ST_GeogFromGeoJSON
+    // But supabase-js doesn't support this directly, so we'll use RPC
+    const { data, error } = await supabase.rpc("insert_route", {
+      p_name: routeData.name,
+      p_start_address: routeData.start_address,
+      p_end_address: routeData.end_address,
+      p_path_geojson: routeData.path,
+    });
 
-  return { data, error };
+    if (error) {
+      console.error("createRoute error:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  } catch (err) {
+    console.error("createRoute exception:", err);
+    return { data: null, error: { message: String(err) } as any };
+  }
 };
 
 export const updateRoute = async (
   routeId: string,
   routeData: {
-    name: string;
-    start_address: string;
-    end_address: string;
+    name?: string;
+    start_address?: string;
+    end_address?: string;
+    path?: any;
   }
 ) => {
-  const { data, error } = await supabase
-    .from("routes")
-    .update({
-      ...routeData,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", routeId)
-    .select();
+  try {
+    // Use RPC function for PostGIS geography handling
+    const { data, error } = await supabase.rpc("update_route", {
+      p_route_id: routeId,
+      p_name: routeData.name || null,
+      p_start_address: routeData.start_address || null,
+      p_end_address: routeData.end_address || null,
+      p_path_geojson: routeData.path || null,
+    });
 
-  return { data, error };
+    if (error) {
+      console.error("updateRoute error:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  } catch (err) {
+    console.error("updateRoute exception:", err);
+    return { data: null, error: { message: String(err) } as any };
+  }
 };
 
 export const deleteRoute = async (routeId: string) => {
-  const { data, error } = await supabase
-    .from("routes")
-    .delete()
-    .eq("id", routeId);
+  try {
+    const { data, error } = await supabase
+      .from("routes")
+      .delete()
+      .eq("id", routeId);
 
-  return { data, error };
+    if (error) {
+      console.error("deleteRoute error:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  } catch (err) {
+    console.error("deleteRoute exception:", err);
+    return { data: null, error: { message: String(err) } as any };
+  }
 };
 
 // Analytics Queries
 export const getTripAnalytics = async (days = 30) => {
+  const dateThreshold = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  console.log("getTripAnalytics: Fetching trips from last", days, "days, since:", dateThreshold);
+
+  // Fetch all trips - some may have started_at as null (cancelled before starting)
+  // Also filter by updated_at as a fallback for trips that were cancelled before starting
   const { data, error } = await supabase
     .from("trips")
     .select(
@@ -330,6 +378,8 @@ export const getTripAnalytics = async (days = 30) => {
       status,
       started_at,
       ended_at,
+      cancelled_at,
+      updated_at,
       buses (
         routes (
           name
@@ -337,11 +387,17 @@ export const getTripAnalytics = async (days = 30) => {
       )
     `
     )
-    .gte(
-      "started_at",
-      new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
-    )
-    .order("started_at", { ascending: false });
+    .or(`started_at.gte.${dateThreshold},updated_at.gte.${dateThreshold}`)
+    .order("updated_at", { ascending: false });
+
+  console.log("getTripAnalytics result:", {
+    count: data?.length || 0,
+    error,
+    statuses: data?.reduce((acc: any, trip: any) => {
+      acc[trip.status] = (acc[trip.status] || 0) + 1;
+      return acc;
+    }, {})
+  });
 
   return { data, error };
 };
@@ -467,6 +523,46 @@ export const assignDriverToBus = async (busId: string, driverId: string) => {
     .update({ driver_id: driverId, updated_at: new Date().toISOString() })
     .eq("id", busId)
     .select();
+
+  return { data, error };
+};
+
+export const updateBusAssignment = async (
+  busId: string,
+  updates: { driverId?: string | null; conductorId?: string | null }
+) => {
+  const { driverId, conductorId } = updates;
+
+  // Build update payload - explicitly set to null if clearing, or the value if setting
+  const updatePayload: any = {
+    updated_at: new Date().toISOString(),
+    // Always include both fields - set to null if empty string or undefined
+    driver_id: driverId || null,
+    conductor_id: conductorId || null,
+  };
+
+  console.log("updateBusAssignment called with:", { busId, updates });
+  console.log("Update payload:", updatePayload);
+
+  const { data, error } = await supabase
+    .from("buses")
+    .update(updatePayload)
+    .eq("id", busId)
+    .select();
+
+  console.log("Update result:", { data, error });
+
+  // Check if update was successful but no rows were affected
+  if (!error && (!data || data.length === 0)) {
+    console.warn("No rows were updated. This may be due to RLS policies or the bus not existing.");
+    return {
+      data: null,
+      error: {
+        message: "Update failed: No rows were affected. Please check database permissions (RLS).",
+        code: "NO_ROWS_AFFECTED"
+      }
+    };
+  }
 
   return { data, error };
 };

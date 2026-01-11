@@ -2,8 +2,10 @@
 
 import {
   CarOutlined,
+  DashboardOutlined,
   EyeOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
   SearchOutlined,
   TeamOutlined,
   UserOutlined,
@@ -57,6 +59,7 @@ export default function UsersPage() {
   const [conductors, setConductors] = useState<User[]>([]);
   const [commuters, setCommuters] = useState<User[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false); // Track if data already loaded
   const [searchText, setSearchText] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
 
@@ -70,15 +73,20 @@ export default function UsersPage() {
   }, [user, loading, isAdmin, router]);
 
   useEffect(() => {
-    if (user && isAdmin) {
+    let isSubscribed = true;
+
+    if (user && isAdmin && !dataLoaded && isSubscribed) {
+      console.log("Loading users data for the first time");
       loadData();
       setupRealtime();
+      setDataLoaded(true);
     }
 
     return () => {
+      isSubscribed = false;
       realtimeManager.unsubscribe("users");
     };
-  }, [user, isAdmin]);
+  }, [user, isAdmin, dataLoaded]);
 
   const loadData = async () => {
     try {
@@ -115,7 +123,8 @@ export default function UsersPage() {
   const setupRealtime = () => {
     realtimeManager.subscribeToUsers({
       onUserUpdate: (payload) => {
-        loadData(); // Refresh data when users change
+        // Silently refresh data in background (no loading screen)
+        loadData();
       },
     });
   };
@@ -277,7 +286,8 @@ export default function UsersPage() {
     isLicenseExpired(driver.license_expiry)
   ).length;
 
-  if (loading || loadingData) {
+  // Only show loading screen during initial authentication or first data load
+  if ((loading && !user) || (loadingData && !dataLoaded)) {
     return (
       <div
         style={{
@@ -294,106 +304,363 @@ export default function UsersPage() {
 
   return (
     <div className="admin-layout">
+      {/* Enhanced Header */}
       <div className="admin-header">
-        <div className="admin-logo">Miniway Admin Dashboard</div>
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <Button onClick={() => router.push("/")}>Dashboard</Button>
-          <Button onClick={loadData} icon={<ReloadOutlined />}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+            }}
+            onClick={() => router.push("/")}
+          >
+            <div
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "12px",
+                background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 4px 12px rgba(245, 158, 11, 0.4)",
+              }}
+            >
+              <TeamOutlined style={{ fontSize: "22px", color: "white" }} />
+            </div>
+            <div>
+              <div
+                style={{
+                  fontSize: "20px",
+                  fontWeight: 800,
+                  background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  letterSpacing: "-0.5px",
+                  lineHeight: 1.2,
+                }}
+              >
+                Users
+              </div>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#64748b",
+                  fontWeight: 500,
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                }}
+              >
+                User Management
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <Button
+            onClick={() => router.push("/")}
+            icon={<DashboardOutlined />}
+            style={{
+              background: "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)",
+              border: "1px solid rgba(99, 102, 241, 0.2)",
+              color: "#6366f1",
+              borderRadius: "12px",
+              fontWeight: 600,
+              height: "40px",
+            }}
+          >
+            Dashboard
+          </Button>
+          <Button
+            onClick={loadData}
+            icon={<ReloadOutlined spin={loadingData} />}
+            type="primary"
+            style={{
+              background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+              border: "none",
+              borderRadius: "12px",
+              fontWeight: 600,
+              height: "40px",
+              boxShadow: "0 4px 12px rgba(245, 158, 11, 0.4)",
+            }}
+          >
             Refresh
           </Button>
         </div>
       </div>
 
       <div className="admin-content">
-        <Row gutter={[16, 16]} style={{ marginBottom: "24px" }}>
+        {/* Hero Section */}
+        <Row gutter={[24, 24]} style={{ marginBottom: "32px" }}>
           <Col span={24}>
-            <Title level={2}>User Management</Title>
-            <Text type="secondary">
-              Manage drivers, conductors, commuters, and system administrators
-            </Text>
+            <div
+              style={{
+                background: "linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%)",
+                padding: "40px",
+                borderRadius: "24px",
+                backdropFilter: "blur(20px)",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                textAlign: "center",
+                position: "relative",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "-30px",
+                  right: "-30px",
+                  width: "150px",
+                  height: "150px",
+                  borderRadius: "50%",
+                  background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)",
+                }}
+              />
+              <Title
+                level={1}
+                style={{
+                  color: "white",
+                  marginBottom: "12px",
+                  fontSize: "42px",
+                  fontWeight: 800,
+                  textShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                  position: "relative",
+                }}
+              >
+                👥 User Management
+              </Title>
+              <Text
+                style={{
+                  color: "rgba(255, 255, 255, 0.9)",
+                  fontSize: "18px",
+                  fontWeight: 500,
+                  position: "relative",
+                }}
+              >
+                Manage drivers, conductors, commuters, and administrators
+              </Text>
+            </div>
           </Col>
         </Row>
 
-        <Row gutter={[16, 16]} style={{ marginBottom: "24px" }}>
+        {/* Statistics Cards */}
+        <Row gutter={[20, 20]} style={{ marginBottom: "32px" }}>
           <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="Drivers"
-                value={driverCount}
-                prefix={<CarOutlined style={{ color: "#1890ff" }} />}
-                valueStyle={{ color: "#1890ff" }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="Conductors"
-                value={conductorCount}
-                prefix={<TeamOutlined style={{ color: "#52c41a" }} />}
-                valueStyle={{ color: "#52c41a" }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="Commuters"
-                value={commuterCount}
-                prefix={<UserOutlined style={{ color: "#722ed1" }} />}
-                valueStyle={{ color: "#722ed1" }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title="Admins"
-                value={adminCount}
-                prefix={<UserOutlined style={{ color: "#fa8c16" }} />}
-                valueStyle={{ color: "#fa8c16" }}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        {expiredLicenses > 0 && (
-          <Row gutter={[16, 16]} style={{ marginBottom: "24px" }}>
-            <Col span={24}>
-              <Card style={{ border: "1px solid #ff4d4f" }}>
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "20px",
+                padding: "24px",
+                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div
-                  style={{ display: "flex", alignItems: "center", gap: "12px" }}
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "16px",
+                    background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 8px 16px rgba(59, 130, 246, 0.3)",
+                  }}
                 >
-                  <Text style={{ color: "#ff4d4f", fontWeight: "bold" }}>
-                    ⚠️ {expiredLicenses} driver license(s) have expired
-                  </Text>
+                  <CarOutlined style={{ fontSize: "24px", color: "white" }} />
                 </div>
-              </Card>
+              </div>
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ fontSize: "36px", fontWeight: 800, color: "#1e293b", lineHeight: 1 }}>
+                  {driverCount}
+                </div>
+                <div style={{ fontSize: "14px", color: "#64748b", fontWeight: 500, marginTop: "4px" }}>
+                  Drivers
+                </div>
+              </div>
+            </div>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "20px",
+                padding: "24px",
+                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "16px",
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 8px 16px rgba(16, 185, 129, 0.3)",
+                  }}
+                >
+                  <SafetyCertificateOutlined style={{ fontSize: "24px", color: "white" }} />
+                </div>
+              </div>
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ fontSize: "36px", fontWeight: 800, color: "#1e293b", lineHeight: 1 }}>
+                  {conductorCount}
+                </div>
+                <div style={{ fontSize: "14px", color: "#64748b", fontWeight: 500, marginTop: "4px" }}>
+                  Conductors
+                </div>
+              </div>
+            </div>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "20px",
+                padding: "24px",
+                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "16px",
+                    background: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 8px 16px rgba(139, 92, 246, 0.3)",
+                  }}
+                >
+                  <UserOutlined style={{ fontSize: "24px", color: "white" }} />
+                </div>
+              </div>
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ fontSize: "36px", fontWeight: 800, color: "#1e293b", lineHeight: 1 }}>
+                  {commuterCount}
+                </div>
+                <div style={{ fontSize: "14px", color: "#64748b", fontWeight: 500, marginTop: "4px" }}>
+                  Commuters
+                </div>
+              </div>
+            </div>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "20px",
+                padding: "24px",
+                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "16px",
+                    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 8px 16px rgba(245, 158, 11, 0.3)",
+                  }}
+                >
+                  <TeamOutlined style={{ fontSize: "24px", color: "white" }} />
+                </div>
+              </div>
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ fontSize: "36px", fontWeight: 800, color: "#1e293b", lineHeight: 1 }}>
+                  {adminCount}
+                </div>
+                <div style={{ fontSize: "14px", color: "#64748b", fontWeight: 500, marginTop: "4px" }}>
+                  Admins
+                </div>
+              </div>
+            </div>
+          </Col>
+        </Row>
+
+        {/* Expired Licenses Alert */}
+        {expiredLicenses > 0 && (
+          <Row gutter={[24, 24]} style={{ marginBottom: "24px" }}>
+            <Col span={24}>
+              <div
+                style={{
+                  background: "linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(248, 113, 113, 0.1) 100%)",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: "16px",
+                  padding: "16px 24px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                }}
+              >
+                <div
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    borderRadius: "10px",
+                    background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <span style={{ fontSize: "18px" }}>⚠️</span>
+                </div>
+                <Text style={{ color: "#dc2626", fontWeight: 600, fontSize: "15px" }}>
+                  {expiredLicenses} driver license(s) have expired and need attention
+                </Text>
+              </div>
             </Col>
           </Row>
         )}
 
-        <Card>
+        {/* Users Table Card */}
+        <Card
+          style={{
+            borderRadius: "20px",
+            border: "none",
+            boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+          }}
+        >
           <div
             style={{
-              marginBottom: "16px",
+              marginBottom: "24px",
               display: "flex",
               gap: "16px",
               flexWrap: "wrap",
+              alignItems: "center",
             }}
           >
             <Search
               placeholder="Search by name, phone, or license..."
-              style={{ width: 300 }}
+              style={{ width: 320, borderRadius: "12px" }}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              prefix={<SearchOutlined />}
+              prefix={<SearchOutlined style={{ color: "#94a3b8" }} />}
+              size="large"
             />
             <Select
               placeholder="Filter by role"
-              style={{ width: 150 }}
+              style={{ width: 160 }}
               value={roleFilter}
               onChange={setRoleFilter}
+              size="large"
             >
               <Option value="all">All Roles</Option>
               <Option value="admin">Admin</Option>
@@ -408,7 +675,12 @@ export default function UsersPage() {
             items={[
               {
                 key: "all",
-                label: `All Users (${allUsers.length})`,
+                label: (
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <TeamOutlined />
+                    All Users ({allUsers.length})
+                  </span>
+                ),
                 children: (
                   <Table
                     columns={columns}
@@ -427,7 +699,12 @@ export default function UsersPage() {
               },
               {
                 key: "drivers",
-                label: `Drivers (${driverCount})`,
+                label: (
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <CarOutlined />
+                    Drivers ({driverCount})
+                  </span>
+                ),
                 children: (
                   <Table
                     columns={columns}
@@ -446,7 +723,12 @@ export default function UsersPage() {
               },
               {
                 key: "conductors",
-                label: `Conductors (${conductorCount})`,
+                label: (
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <SafetyCertificateOutlined />
+                    Conductors ({conductorCount})
+                  </span>
+                ),
                 children: (
                   <Table
                     columns={columns}
@@ -465,7 +747,12 @@ export default function UsersPage() {
               },
               {
                 key: "commuters",
-                label: `Commuters (${commuterCount})`,
+                label: (
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <UserOutlined />
+                    Commuters ({commuterCount})
+                  </span>
+                ),
                 children: (
                   <Table
                     columns={columns}
