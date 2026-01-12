@@ -101,6 +101,13 @@ export default function RoutesPage() {
     null
   );
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [routeVersion, setRouteVersion] = useState(0); // Used to force Polyline re-render
+
+  // Location picker modal state
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const [locationPickerType, setLocationPickerType] = useState<"start" | "end">("start");
+  const [tempPickerPosition, setTempPickerPosition] = useState<google.maps.LatLngLiteral | null>(null);
+  const pickerMapRef = useRef<google.maps.Map | null>(null);
 
   // Log the Google Maps API key for debugging
   console.log(
@@ -509,33 +516,49 @@ export default function RoutesPage() {
       message.error("Please enter a route name.");
       return;
     }
-    if (!values.start_address?.trim() || !values.end_address?.trim()) {
-      message.error("Please enter both origin and destination addresses.");
+
+    // Check if we have pinned positions OR addresses
+    const hasStartPin = startPosition !== null;
+    const hasEndPin = endPosition !== null;
+    const hasStartAddress = values.start_address?.trim();
+    const hasEndAddress = values.end_address?.trim();
+
+    if ((!hasStartPin && !hasStartAddress) || (!hasEndPin && !hasEndAddress)) {
+      message.error("Please set both origin and destination (use 'Pick on Map' or enter addresses).");
       return;
     }
 
     setPreviewLoading(true);
     setRoutePolylines([]);
     setSelectedRouteIndex(null);
-    setStartPosition(null);
-    setEndPosition(null);
+    setRouteVersion(v => v + 1); // Force Polyline re-mount
 
     try {
-      // Geocode Origin
-      const originLoc = await geocodeAddress(values.start_address);
-      if (!originLoc) return;
-      setStartPosition({ lat: originLoc.latitude, lng: originLoc.longitude });
+      let originCoords = startPosition;
+      let destCoords = endPosition;
 
-      // Geocode Destination
-      const destLoc = await geocodeAddress(values.end_address);
-      if (!destLoc) return;
-      setEndPosition({ lat: destLoc.latitude, lng: destLoc.longitude });
+      // Only geocode if we don't have pinned coordinates
+      if (!originCoords && hasStartAddress) {
+        const originLoc = await geocodeAddress(values.start_address);
+        if (!originLoc) return;
+        originCoords = { lat: originLoc.latitude, lng: originLoc.longitude };
+        setStartPosition(originCoords);
+      }
 
-      // Fetch Directions
-      const routes = await fetchDirections(
-        { lat: originLoc.latitude, lng: originLoc.longitude },
-        { lat: destLoc.latitude, lng: destLoc.longitude }
-      );
+      if (!destCoords && hasEndAddress) {
+        const destLoc = await geocodeAddress(values.end_address);
+        if (!destLoc) return;
+        destCoords = { lat: destLoc.latitude, lng: destLoc.longitude };
+        setEndPosition(destCoords);
+      }
+
+      if (!originCoords || !destCoords) {
+        message.error("Could not determine route coordinates.");
+        return;
+      }
+
+      // Fetch Directions using the coordinates (pinned or geocoded)
+      const routes = await fetchDirections(originCoords, destCoords);
       if (!routes || routes.length === 0) return;
       setRoutePolylines(routes);
       setSelectedRouteIndex(0); // Select the first route by default
@@ -544,8 +567,8 @@ export default function RoutesPage() {
       if (mapRef.current && routes[0].path.length > 0) {
         const bounds = new google.maps.LatLngBounds();
         routes[0].path.forEach((p) => bounds.extend(p));
-        bounds.extend({ lat: originLoc.latitude, lng: originLoc.longitude });
-        bounds.extend({ lat: destLoc.latitude, lng: destLoc.longitude });
+        bounds.extend(originCoords);
+        bounds.extend(destCoords);
         mapRef.current.fitBounds(bounds);
       }
     } finally {
@@ -1076,401 +1099,666 @@ export default function RoutesPage() {
             }}
             scroll={{ x: 800 }}
           />
-        </Card>{" "}
+        </Card>
         <Modal
-          title={editingRoute ? "Edit Route" : "Add New Route"}
           open={modalVisible}
           onCancel={handleModalClose}
           footer={null}
+          width={900}
+          styles={{
+            content: {
+              padding: 0,
+              borderRadius: "24px",
+              overflow: "hidden",
+            },
+            body: {
+              padding: 0,
+            },
+          }}
+          closable={false}
         >
-          <Form form={form} layout="vertical" onFinish={handleSubmit}>
-            <Form.Item
-              label="Route Name"
-              name="name"
-              rules={[{ required: true, message: "Please enter route name!" }]}
-            >
-              <Input placeholder="e.g., Downtown to Airport" />
-            </Form.Item>
-            <Form.Item
-              label="Start Address"
-              name="start_address"
-              rules={[
-                { required: true, message: "Please enter start address!" },
-              ]}
-            >
-              <TextArea
-                rows={2}
-                placeholder="e.g., 123 Main Street, Downtown"
-              />
-            </Form.Item>
-            <Form.Item
-              label="End Address"
-              name="end_address"
-              rules={[{ required: true, message: "Please enter end address!" }]}
-            >
-              <TextArea
-                rows={2}
-                placeholder="e.g., International Airport Terminal 1"
-              />
-            </Form.Item>{" "}
-            <Form.Item>
-              <AntButton
-                type="default"
-                onClick={previewRoute}
-                loading={previewLoading}
-                disabled={
-                  !form.getFieldValue("start_address") ||
-                  !form.getFieldValue("end_address")
-                }
-                style={{
-                  background:
-                    selectedRouteIndex !== null ? "#52c41a" : undefined,
-                  borderColor:
-                    selectedRouteIndex !== null ? "#52c41a" : undefined,
-                  color: selectedRouteIndex !== null ? "white" : undefined,
-                }}
-              >
-                {selectedRouteIndex !== null
-                  ? "✓ Route Selected"
-                  : "Preview Route"}
-              </AntButton>
-              {selectedRouteIndex === null && (
-                <Text type="secondary" style={{ marginLeft: "12px" }}>
-                  (Required before saving)
-                </Text>
-              )}
-            </Form.Item>
-            {routePolylines.length > 0 && (
-              <Form.Item label="Select a Route">
-                <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-                  {routePolylines.map((route, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        padding: "12px",
-                        border: `2px solid ${selectedRouteIndex === index ? "#007AFF" : "#ddd"
-                          }`,
-                        borderRadius: "8px",
-                        marginBottom: "8px",
-                        backgroundColor:
-                          selectedRouteIndex === index ? "#e6f2ff" : "#fff",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => setSelectedRouteIndex(index)}
-                    >
-                      <div style={{ fontWeight: "bold", marginBottom: "4px" }}>
-                        Via {route.summary}
-                      </div>
-                      <div style={{ color: "#666" }}>
-                        {route.duration} ({route.distance})
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Form.Item>
-            )}{" "}
-            <Form.Item label="Set Route Locations on Map">
-              <div style={{ marginBottom: "16px" }}>
+          {/* Premium Modal Header with Progress */}
+          <div
+            style={{
+              background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+              padding: "24px 32px",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            {/* Decorative elements */}
+            <div style={{ position: "absolute", top: "-40px", right: "-40px", width: "150px", height: "150px", borderRadius: "50%", background: "rgba(255, 255, 255, 0.1)" }} />
+            <div style={{ position: "absolute", bottom: "-30px", left: "30%", width: "100px", height: "100px", borderRadius: "50%", background: "rgba(255, 255, 255, 0.08)" }} />
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative", zIndex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
                 <div
                   style={{
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "14px",
+                    background: "rgba(255, 255, 255, 0.2)",
+                    backdropFilter: "blur(10px)",
                     display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  <Space wrap>
-                    <AntButton
-                      type={mapMode === "start" ? "primary" : "default"}
-                      onClick={() => setMapMode("start")}
-                      icon={
-                        <EnvironmentOutlined style={{ color: "#52c41a" }} />
-                      }
-                      disabled={!!loadError}
-                    >
-                      Set Start Point
-                    </AntButton>
-                    <AntButton
-                      type={mapMode === "end" ? "primary" : "default"}
-                      onClick={() => setMapMode("end")}
-                      icon={
-                        <EnvironmentOutlined style={{ color: "#ff4d4f" }} />
-                      }
-                      disabled={!!loadError}
-                    >
-                      Set End Point
-                    </AntButton>
-                    <AntButton
-                      onClick={() => {
-                        setStartPosition(null);
-                        setEndPosition(null);
-                      }}
-                    >
-                      Clear Points
-                    </AntButton>
-                  </Space>
-                  <Space wrap>
-                    <AntButton
-                      onClick={centerMyLocation}
-                      icon={<EnvironmentOutlined />}
-                      disabled={!!loadError}
-                    >
-                      My Location
-                    </AntButton>
-                    <AntButton
-                      onClick={centerOnDigosCity}
-                      icon={<CompassOutlined />}
-                      disabled={!!loadError}
-                    >
-                      Digos City
-                    </AntButton>
-                  </Space>
+                  <CompassOutlined style={{ fontSize: "24px", color: "white" }} />
                 </div>
-                <Text
-                  type="secondary"
-                  style={{ display: "block", marginTop: "8px" }}
-                >
-                  {loadError
-                    ? "Google Maps failed to load. Use manual coordinate entry below."
-                    : mapMode === "start"
-                      ? "Click on the map to set the starting location"
-                      : "Click on the map to set the ending location"}{" "}
-                </Text>
+                <div>
+                  <div style={{ fontSize: "20px", fontWeight: 700, color: "white" }}>
+                    {editingRoute ? "Edit Route" : "Create New Route"}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.8)", marginTop: "2px" }}>
+                    Quick 2-step process
+                  </div>
+                </div>
               </div>
 
-              <div
+              {/* Progress Steps */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", background: "rgba(255,255,255,0.2)", borderRadius: "20px" }}>
+                  <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, color: "#f093fb" }}>1</div>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "white" }}>Info</span>
+                </div>
+                <div style={{ width: "20px", height: "2px", background: "rgba(255,255,255,0.4)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", background: selectedRouteIndex !== null ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.1)", borderRadius: "20px" }}>
+                  <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: selectedRouteIndex !== null ? "white" : "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, color: selectedRouteIndex !== null ? "#10b981" : "white" }}>{selectedRouteIndex !== null ? "✓" : "2"}</div>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "white" }}>Select</span>
+                </div>
+              </div>
+
+              <AntButton
+                type="text"
+                onClick={handleModalClose}
                 style={{
-                  height: "400px",
-                  border: "1px solid #d9d9d9",
-                  borderRadius: "6px",
+                  color: "white",
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "10px",
+                  background: "rgba(255, 255, 255, 0.15)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "16px",
                 }}
               >
-                {loadError ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      height: "100%",
-                      padding: "20px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <EnvironmentOutlined
-                      style={{
-                        fontSize: "48px",
-                        color: "#ff4d4f",
-                        marginBottom: "16px",
-                      }}
-                    />
-                    <Text strong style={{ marginBottom: "8px" }}>
-                      Google Maps Failed to Load
-                    </Text>
-                    <Text type="secondary" style={{ marginBottom: "16px" }}>
-                      Please check your Google Maps API key configuration.
-                    </Text>
-                    <Text type="secondary" style={{ fontSize: "12px" }}>
-                      You can still create routes by entering coordinates
-                      manually below.
-                    </Text>
-                    <div style={{ marginTop: "16px", color: "#faad14" }}>
-                      <Text strong>Note:</Text> Some browser extensions, such as
-                      ad blockers, may block Google Maps from loading. Please
-                      disable such extensions and try again.
-                    </div>
-                  </div>
-                ) : !isLoaded ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      height: "100%",
-                    }}
-                  >
-                    <Spin size="large" />
-                  </div>
-                ) : (
-                  <GoogleMap
-                    zoom={14}
-                    center={mapCenter}
-                    mapContainerStyle={{ width: "100%", height: "100%" }}
-                    onClick={handleMapClick}
-                    onLoad={(map) => {
-                      mapRef.current = map;
-                    }}
-                  >
-                    {startPosition && (
-                      <>
-                        <Marker
-                          position={startPosition}
-                          icon={{
-                            url: "/start-marker.png",
-                            scaledSize: new google.maps.Size(32, 32),
-                          }}
-                          onClick={() => setShowStartInfo(true)}
-                        />
-                        {showStartInfo && (
-                          <InfoWindow
-                            position={startPosition}
-                            onCloseClick={() => setShowStartInfo(false)}
-                          >
-                            <div>
-                              <h3 className="font-semibold">Start Point</h3>
-                              <p>Lat: {startPosition.lat.toFixed(6)}</p>
-                              <p>Lng: {startPosition.lng.toFixed(6)}</p>
-                            </div>
-                          </InfoWindow>
-                        )}
-                      </>
-                    )}
+                ✕
+              </AntButton>
+            </div>
+          </div>
 
-                    {endPosition && (
-                      <>
-                        <Marker
-                          position={endPosition}
-                          icon={{
-                            url: "/end-marker.png",
-                            scaledSize: new google.maps.Size(32, 32),
-                          }}
-                          onClick={() => setShowEndInfo(true)}
-                        />
-                        {showEndInfo && (
-                          <InfoWindow
-                            position={endPosition}
-                            onCloseClick={() => setShowEndInfo(false)}
-                          >
-                            <div>
-                              <h3 className="font-semibold">End Point</h3>
-                              <p>Lat: {endPosition.lat.toFixed(6)}</p>
-                              <p>Lng: {endPosition.lng.toFixed(6)}</p>
-                            </div>
-                          </InfoWindow>
-                        )}
-                      </>
-                    )}
-                    {routePolylines.map((route, index) => (
-                      <Polyline
-                        key={index}
-                        path={route.path}
-                        options={{
-                          strokeColor:
-                            selectedRouteIndex === index
-                              ? "#007AFF"
-                              : "#aab5c2",
-                          strokeWeight: selectedRouteIndex === index ? 6 : 4,
+          {/* Modal Body */}
+          <div style={{ padding: "28px 32px", maxHeight: "70vh", overflowY: "auto" }}>
+            <Form form={form} layout="vertical" onFinish={handleSubmit}>
+
+              {/* Step 1: Route Details */}
+              <div
+                style={{
+                  background: "linear-gradient(135deg, rgba(240, 147, 251, 0.08) 0%, rgba(245, 87, 108, 0.08) 100%)",
+                  borderRadius: "16px",
+                  padding: "24px",
+                  marginBottom: "24px",
+                  border: "1px solid rgba(240, 147, 251, 0.2)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+                  <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <CompassOutlined style={{ fontSize: "14px", color: "white" }} />
+                  </div>
+                  <div style={{ fontWeight: 600, fontSize: "14px", color: "#1e293b" }}>Route Information</div>
+                </div>
+
+                <Form.Item
+                  name="name"
+                  rules={[{ required: true, message: "Please enter route name!" }]}
+                  style={{ marginBottom: "16px" }}
+                >
+                  <Input
+                    placeholder="Enter route name (e.g., Downtown to Airport)"
+                    prefix={<CompassOutlined style={{ color: "#f093fb" }} />}
+                    style={{
+                      height: "48px",
+                      borderRadius: "12px",
+                      fontSize: "14px",
+                      border: "2px solid #e2e8f0",
+                    }}
+                  />
+                </Form.Item>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <div style={{ marginBottom: "4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#10b981", boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.2)" }} />
+                        <Text style={{ fontSize: "11px", color: "#10b981", fontWeight: 600, textTransform: "uppercase" }}>Start Point</Text>
+                      </div>
+                      <div
+                        onClick={() => { setLocationPickerType("start"); setTempPickerPosition(startPosition); setLocationPickerOpen(true); }}
+                        style={{ padding: "4px 10px", borderRadius: "6px", background: "#dcfce7", color: "#16a34a", fontSize: "11px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+                      >
+                        📍 Pick on Map
+                      </div>
+                    </div>
+                    <Form.Item
+                      name="start_address"
+                      rules={[{ required: true, message: "Please enter start address!" }]}
+                      style={{ marginBottom: 0 }}
+                    >
+                      <TextArea
+                        rows={2}
+                        placeholder="Start address or click 'Pick on Map'..."
+                        style={{
+                          borderRadius: "12px",
+                          border: "2px solid #e2e8f0",
+                          resize: "none",
                         }}
                       />
-                    ))}
-                  </GoogleMap>
+                    </Form.Item>
+                    {startPosition && (
+                      <Text style={{ fontSize: "10px", color: "#10b981", marginTop: "4px", display: "block" }}>
+                        📌 {startPosition.lat.toFixed(5)}, {startPosition.lng.toFixed(5)}
+                      </Text>
+                    )}
+                  </Col>
+                  <Col span={12}>
+                    <div style={{ marginBottom: "4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 0 3px rgba(239, 68, 68, 0.2)" }} />
+                        <Text style={{ fontSize: "11px", color: "#ef4444", fontWeight: 600, textTransform: "uppercase" }}>End Point</Text>
+                      </div>
+                      <div
+                        onClick={() => { setLocationPickerType("end"); setTempPickerPosition(endPosition); setLocationPickerOpen(true); }}
+                        style={{ padding: "4px 10px", borderRadius: "6px", background: "#fee2e2", color: "#dc2626", fontSize: "11px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+                      >
+                        📍 Pick on Map
+                      </div>
+                    </div>
+                    <Form.Item
+                      name="end_address"
+                      rules={[{ required: true, message: "Please enter end address!" }]}
+                      style={{ marginBottom: 0 }}
+                    >
+                      <TextArea
+                        rows={2}
+                        placeholder="End address or click 'Pick on Map'..."
+                        style={{
+                          borderRadius: "12px",
+                          border: "2px solid #e2e8f0",
+                          resize: "none",
+                        }}
+                      />
+                    </Form.Item>
+                    {endPosition && (
+                      <Text style={{ fontSize: "10px", color: "#ef4444", marginTop: "4px", display: "block" }}>
+                        📌 {endPosition.lat.toFixed(5)}, {endPosition.lng.toFixed(5)}
+                      </Text>
+                    )}
+                  </Col>
+                </Row>
+              </div>
+
+              {/* Step 2: Map & Route Selection */}
+              <div
+                style={{
+                  background: "linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, rgba(139, 92, 246, 0.06) 100%)",
+                  borderRadius: "16px",
+                  padding: "20px",
+                  marginBottom: "20px",
+                  border: "1px solid rgba(99, 102, 241, 0.15)",
+                }}
+              >
+                {/* Section Header with Generate Button */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <EnvironmentOutlined style={{ fontSize: "14px", color: "white" }} />
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: "14px", color: "#1e293b" }}>Map & Route Selection</div>
+                  </div>
+                  <AntButton
+                    onClick={previewRoute}
+                    loading={previewLoading}
+                    style={{
+                      height: "40px",
+                      borderRadius: "10px",
+                      fontWeight: 600,
+                      padding: "0 20px",
+                      background: routePolylines.length > 0 ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" : "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                      border: "none",
+                      color: "white",
+                      boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    {routePolylines.length > 0 ? "🔄 Regenerate" : "🔍 Generate Routes"}
+                  </AntButton>
+                </div>
+
+
+                {/* Map Container */}
+                <div
+                  style={{
+                    height: "350px",
+                    borderRadius: "16px",
+                    overflow: "hidden",
+                    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.1)",
+                    border: "2px solid #e2e8f0",
+                  }}
+                >
+                  {loadError ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        height: "100%",
+                        padding: "32px",
+                        textAlign: "center",
+                        background: "linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(248, 113, 113, 0.05) 100%)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "72px",
+                          height: "72px",
+                          borderRadius: "20px",
+                          background: "linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(248, 113, 113, 0.15) 100%)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginBottom: "20px",
+                        }}
+                      >
+                        <EnvironmentOutlined style={{ fontSize: "36px", color: "#ef4444" }} />
+                      </div>
+                      <Text strong style={{ fontSize: "16px", color: "#1e293b", marginBottom: "8px" }}>
+                        Google Maps Failed to Load
+                      </Text>
+                      <Text style={{ color: "#64748b", marginBottom: "16px" }}>
+                        Please check your Google Maps API key configuration.
+                      </Text>
+                      <div
+                        style={{
+                          padding: "12px 20px",
+                          borderRadius: "12px",
+                          background: "linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(251, 191, 36, 0.1) 100%)",
+                          border: "1px solid rgba(245, 158, 11, 0.3)",
+                        }}
+                      >
+                        <Text style={{ fontSize: "12px", color: "#b45309" }}>
+                          <strong>Tip:</strong> Ad blockers may block Google Maps. Try disabling them.
+                        </Text>
+                      </div>
+                    </div>
+                  ) : !isLoaded ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        height: "100%",
+                        background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+                      }}
+                    >
+                      <Spin size="large" />
+                      <Text style={{ color: "#64748b", marginTop: "16px" }}>Loading map...</Text>
+                    </div>
+                  ) : (
+                    <GoogleMap
+                      zoom={14}
+                      center={mapCenter}
+                      mapContainerStyle={{ width: "100%", height: "100%" }}
+                      onLoad={(map) => {
+                        mapRef.current = map;
+                      }}
+                    >
+                      {startPosition && (
+                        <>
+                          <Marker
+                            position={startPosition}
+                            icon={{
+                              url: "/start-marker.png",
+                              scaledSize: new google.maps.Size(32, 32),
+                            }}
+                            onClick={() => setShowStartInfo(true)}
+                          />
+                          {showStartInfo && (
+                            <InfoWindow
+                              position={startPosition}
+                              onCloseClick={() => setShowStartInfo(false)}
+                            >
+                              <div style={{ padding: "8px" }}>
+                                <div style={{ fontWeight: 700, color: "#10b981", marginBottom: "8px" }}>🟢 Start Point</div>
+                                <div style={{ fontSize: "12px", color: "#64748b" }}>
+                                  <div>Lat: {startPosition.lat.toFixed(6)}</div>
+                                  <div>Lng: {startPosition.lng.toFixed(6)}</div>
+                                </div>
+                              </div>
+                            </InfoWindow>
+                          )}
+                        </>
+                      )}
+
+                      {endPosition && (
+                        <>
+                          <Marker
+                            position={endPosition}
+                            icon={{
+                              url: "/end-marker.png",
+                              scaledSize: new google.maps.Size(32, 32),
+                            }}
+                            onClick={() => setShowEndInfo(true)}
+                          />
+                          {showEndInfo && (
+                            <InfoWindow
+                              position={endPosition}
+                              onCloseClick={() => setShowEndInfo(false)}
+                            >
+                              <div style={{ padding: "8px" }}>
+                                <div style={{ fontWeight: 700, color: "#ef4444", marginBottom: "8px" }}>🔴 End Point</div>
+                                <div style={{ fontSize: "12px", color: "#64748b" }}>
+                                  <div>Lat: {endPosition.lat.toFixed(6)}</div>
+                                  <div>Lng: {endPosition.lng.toFixed(6)}</div>
+                                </div>
+                              </div>
+                            </InfoWindow>
+                          )}
+                        </>
+                      )}
+                      {routePolylines.map((route, index) => (
+                        <Polyline
+                          key={`${routeVersion}-${index}`}
+                          path={route.path}
+                          options={{
+                            strokeColor:
+                              selectedRouteIndex === index
+                                ? "#6366f1"
+                                : "#94a3b8",
+                            strokeWeight: selectedRouteIndex === index ? 6 : 3,
+                            strokeOpacity: selectedRouteIndex === index ? 1 : 0.5,
+                          }}
+                        />
+                      ))}
+                    </GoogleMap>
+                  )}
+                </div>
+
+                {/* Route Selection Cards - Horizontal Layout */}
+                {routePolylines.length > 0 && (
+                  <div style={{ marginTop: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                      <Text style={{ fontSize: "12px", color: "#64748b", fontWeight: 600, textTransform: "uppercase" }}>
+                        Select a Route ({routePolylines.length} found)
+                      </Text>
+                      {selectedRouteIndex !== null && (
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 10px", background: "#dcfce7", borderRadius: "12px" }}>
+                          <span style={{ fontSize: "12px" }}>✓</span>
+                          <Text style={{ fontSize: "11px", color: "#16a34a", fontWeight: 600 }}>Route {selectedRouteIndex + 1} Selected</Text>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: "12px", overflowX: "auto", paddingBottom: "8px" }}>
+                      {routePolylines.map((route, index) => (
+                        <div
+                          key={index}
+                          onClick={() => setSelectedRouteIndex(index)}
+                          style={{
+                            minWidth: "160px",
+                            padding: "14px 16px",
+                            borderRadius: "12px",
+                            border: selectedRouteIndex === index ? "2px solid #6366f1" : "2px solid #e2e8f0",
+                            background: selectedRouteIndex === index ? "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)" : "white",
+                            cursor: "pointer",
+                            transition: "all 0.2s ease",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                            <div style={{ width: "24px", height: "24px", borderRadius: "6px", background: selectedRouteIndex === index ? "#6366f1" : "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, color: selectedRouteIndex === index ? "white" : "#64748b" }}>
+                              {selectedRouteIndex === index ? "✓" : index + 1}
+                            </div>
+                            <Text style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>Route {index + 1}</Text>
+                          </div>
+                          <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "8px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            Via {route.summary}
+                          </div>
+                          <div style={{ display: "flex", gap: "12px" }}>
+                            <div>
+                              <div style={{ fontSize: "14px", fontWeight: 700, color: "#6366f1" }}>{route.duration}</div>
+                              <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase" }}>Time</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: "14px", fontWeight: 700, color: "#10b981" }}>{route.distance}</div>
+                              <div style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase" }}>Dist</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {routePolylines.length === 0 && (
+                  <div style={{ marginTop: "16px", padding: "16px", borderRadius: "10px", background: "#fef3c7", border: "1px solid #fcd34d", display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "20px" }}>💡</span>
+                    <div>
+                      <Text style={{ fontSize: "12px", fontWeight: 600, color: "#b45309" }}>Enter addresses above and click "Generate Routes"</Text>
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual Coordinate Entry - Compact */}
+                {loadError && (
+                  <div style={{ marginTop: "16px", padding: "12px", background: "#fef2f2", borderRadius: "10px", border: "1px solid #fecaca" }}>
+                    <Text style={{ fontSize: "11px", color: "#dc2626", fontWeight: 500 }}>⚠️ Map unavailable - Enter coordinates manually in form fields above</Text>
+                  </div>
                 )}
               </div>
 
-              {(startPosition || endPosition) && (
-                <div
-                  style={{
-                    marginTop: "16px",
-                    padding: "12px",
-                    background: "#f6ffed",
-                    border: "1px solid #b7eb8f",
-                    borderRadius: "6px",
-                  }}
-                >
-                  <Text strong>Selected Locations:</Text>
-                  <div style={{ marginTop: "8px" }}>
-                    {startPosition && (
-                      <div style={{ color: "#52c41a", marginBottom: "4px" }}>
-                        🟢 Start: {startPosition.lat.toFixed(6)},{" "}
-                        {startPosition.lng.toFixed(6)}
-                      </div>
-                    )}
-                    {endPosition && (
-                      <div style={{ color: "#ff4d4f" }}>
-                        🔴 End: {endPosition.lat.toFixed(6)},{" "}
-                        {endPosition.lng.toFixed(6)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {loadError && (
-                <div style={{ marginTop: "16px" }}>
-                  <Text
-                    strong
-                    style={{ marginBottom: "8px", display: "block" }}
-                  >
-                    Manual Coordinate Entry
-                  </Text>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item label="Start Latitude">
-                        <Input
-                          placeholder="e.g., 14.599512"
-                          value={startPosition?.lat || ""}
-                          onChange={(e) => handleInputChange(e, "start", "lat")}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item label="Start Longitude">
-                        <Input
-                          placeholder="e.g., 120.984222"
-                          value={startPosition?.lng || ""}
-                          onChange={(e) => handleInputChange(e, "start", "lng")}
-                        />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item label="End Latitude">
-                        <Input
-                          placeholder="e.g., 14.508647"
-                          value={endPosition?.lat || ""}
-                          onChange={(e) => handleInputChange(e, "end", "lat")}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item label="End Longitude">
-                        <Input
-                          placeholder="e.g., 121.019581"
-                          value={endPosition?.lng || ""}
-                          onChange={(e) => handleInputChange(e, "end", "lng")}
-                        />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                </div>
-              )}
-            </Form.Item>{" "}
-            <Form.Item>
-              <Space>
-                <AntButton
-                  type="primary"
-                  htmlType="submit"
-                  disabled={submitting || selectedRouteIndex === null}
-                  title={
-                    selectedRouteIndex === null
-                      ? "Please preview and select a route first"
-                      : ""
-                  }
-                >
-                  {editingRoute ? "Update Route" : "Create Route"}
-                </AntButton>{" "}
-                <AntButton onClick={handleModalClose}>Cancel</AntButton>
-              </Space>
-            </Form.Item>
-            {selectedRouteIndex === null && (
-              <Text
-                type="warning"
-                style={{ display: "block", marginTop: "8px" }}
+              {/* Action Buttons */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "20px 24px",
+                  background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+                  borderRadius: "16px",
+                  border: "1px solid #e2e8f0",
+                }}
               >
-                ⚠️ Please click "Preview Route" and select a path before saving.
-              </Text>
+                <div>
+                  {selectedRouteIndex === null && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ fontSize: "18px" }}>⚠️</div>
+                      <Text style={{ fontSize: "13px", color: "#b45309", fontWeight: 500 }}>
+                        Please preview and select a route before saving
+                      </Text>
+                    </div>
+                  )}
+                  {selectedRouteIndex !== null && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ fontSize: "18px" }}>✅</div>
+                      <Text style={{ fontSize: "13px", color: "#059669", fontWeight: 500 }}>
+                        Route selected and ready to save
+                      </Text>
+                    </div>
+                  )}
+                </div>
+                <Space size="middle">
+                  <AntButton
+                    onClick={handleModalClose}
+                    style={{
+                      height: "44px",
+                      borderRadius: "12px",
+                      fontWeight: 600,
+                      padding: "0 24px",
+                      background: "white",
+                      border: "2px solid #e2e8f0",
+                      color: "#64748b",
+                    }}
+                  >
+                    Cancel
+                  </AntButton>
+                  <AntButton
+                    type="primary"
+                    htmlType="submit"
+                    disabled={submitting || selectedRouteIndex === null}
+                    loading={submitting}
+                    style={{
+                      height: "48px",
+                      borderRadius: "12px",
+                      fontWeight: 700,
+                      padding: "0 32px",
+                      fontSize: "15px",
+                      background: selectedRouteIndex !== null
+                        ? "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
+                        : "#e2e8f0",
+                      border: "none",
+                      color: selectedRouteIndex !== null ? "white" : "#94a3b8",
+                      boxShadow: selectedRouteIndex !== null
+                        ? "0 8px 24px rgba(240, 147, 251, 0.4)"
+                        : "none",
+                    }}
+                  >
+                    {editingRoute ? "💾 Update Route" : "✨ Create Route"}
+                  </AntButton>
+                </Space>
+              </div>
+            </Form>
+          </div>
+        </Modal>
+
+        {/* Location Picker Modal */}
+        <Modal
+          open={locationPickerOpen}
+          onCancel={() => { setLocationPickerOpen(false); setTempPickerPosition(null); }}
+          title={null}
+          footer={null}
+          width={600}
+          styles={{
+            content: { padding: 0, borderRadius: "16px", overflow: "hidden" },
+            body: { padding: 0 },
+          }}
+          closable={false}
+        >
+          <div style={{ background: locationPickerType === "start" ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" : "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <EnvironmentOutlined style={{ fontSize: "18px", color: "white" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: "16px", fontWeight: 700, color: "white" }}>
+                  {locationPickerType === "start" ? "Set Start Point" : "Set End Point"}
+                </div>
+                <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.8)" }}>Click on the map to pin location</div>
+              </div>
+            </div>
+            <AntButton type="text" onClick={() => { setLocationPickerOpen(false); setTempPickerPosition(null); }} style={{ color: "white", width: "32px", height: "32px", borderRadius: "8px", background: "rgba(255,255,255,0.15)" }}>✕</AntButton>
+          </div>
+
+          <div style={{ height: "350px", position: "relative" }}>
+            {isLoaded && (
+              <GoogleMap
+                zoom={14}
+                center={tempPickerPosition || mapCenter}
+                mapContainerStyle={{ width: "100%", height: "100%" }}
+                onClick={(e) => {
+                  if (e.latLng) {
+                    setTempPickerPosition({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+                  }
+                }}
+                onLoad={(map) => { pickerMapRef.current = map; }}
+              >
+                {tempPickerPosition && (
+                  <Marker
+                    position={tempPickerPosition}
+                    animation={google.maps.Animation.DROP}
+                    icon={{
+                      path: google.maps.SymbolPath.CIRCLE,
+                      scale: 12,
+                      fillColor: locationPickerType === "start" ? "#10b981" : "#ef4444",
+                      fillOpacity: 1,
+                      strokeColor: "white",
+                      strokeWeight: 3,
+                    }}
+                  />
+                )}
+              </GoogleMap>
             )}
-          </Form>
+            {tempPickerPosition && (
+              <div style={{ position: "absolute", bottom: "12px", left: "12px", padding: "8px 12px", background: "white", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", fontSize: "12px" }}>
+                📌 {tempPickerPosition.lat.toFixed(6)}, {tempPickerPosition.lng.toFixed(6)}
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: "16px 20px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ fontSize: "12px", color: "#64748b" }}>
+              {tempPickerPosition ? "Location pinned! Click Confirm to save." : "Click anywhere on the map to pin a location."}
+            </Text>
+            <Space>
+              <AntButton onClick={() => { setLocationPickerOpen(false); setTempPickerPosition(null); }} style={{ borderRadius: "8px" }}>Cancel</AntButton>
+              <AntButton
+                type="primary"
+                disabled={!tempPickerPosition}
+                onClick={async () => {
+                  if (tempPickerPosition) {
+                    // Save the position
+                    if (locationPickerType === "start") {
+                      setStartPosition(tempPickerPosition);
+                    } else {
+                      setEndPosition(tempPickerPosition);
+                    }
+
+                    // Reverse geocode to get address
+                    try {
+                      const response = await fetch(
+                        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${tempPickerPosition.lat},${tempPickerPosition.lng}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`
+                      );
+                      const data = await response.json();
+                      if (data.results && data.results.length > 0) {
+                        const address = data.results[0].formatted_address;
+                        if (locationPickerType === "start") {
+                          form.setFieldsValue({ start_address: address });
+                        } else {
+                          form.setFieldsValue({ end_address: address });
+                        }
+                      }
+                    } catch (error) {
+                      console.error("Reverse geocoding failed:", error);
+                      // Fallback: use coordinates as address
+                      const coordAddress = `${tempPickerPosition.lat.toFixed(6)}, ${tempPickerPosition.lng.toFixed(6)}`;
+                      if (locationPickerType === "start") {
+                        form.setFieldsValue({ start_address: coordAddress });
+                      } else {
+                        form.setFieldsValue({ end_address: coordAddress });
+                      }
+                    }
+
+                    setLocationPickerOpen(false);
+                    setTempPickerPosition(null);
+                  }
+                }}
+                style={{
+                  borderRadius: "8px",
+                  background: tempPickerPosition
+                    ? (locationPickerType === "start" ? "#10b981" : "#ef4444")
+                    : "#e2e8f0",
+                  border: "none",
+                }}
+              >
+                ✓ Confirm Location
+              </AntButton>
+            </Space>
+          </div>
         </Modal>
       </div>
       <Toaster />
