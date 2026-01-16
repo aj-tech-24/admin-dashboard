@@ -345,16 +345,47 @@ export const updateRoute = async (
 
 export const deleteRoute = async (routeId: string) => {
   try {
+    // Debug: Log current auth user and their role
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log("deleteRoute - Current auth user ID:", session?.user?.id);
+
+    if (session?.user?.id) {
+      const { data: userData } = await supabase
+        .from("users")
+        .select("id, fullName, role")
+        .eq("id", session.user.id)
+        .single();
+      console.log("deleteRoute - User in users table:", userData);
+    } else {
+      console.error("deleteRoute - No authenticated session found!");
+    }
+
+    // Add .select() to get back the deleted rows - this helps verify deletion actually happened
     const { data, error } = await supabase
       .from("routes")
       .delete()
-      .eq("id", routeId);
+      .eq("id", routeId)
+      .select();
 
     if (error) {
       console.error("deleteRoute error:", error);
       return { data: null, error };
     }
 
+    // Check if the delete actually affected any rows
+    // When RLS policies block deletion, Supabase returns empty data without an error
+    if (!data || data.length === 0) {
+      console.error("deleteRoute: No rows were deleted. This may be due to RLS policies or the route not existing.");
+      return {
+        data: null,
+        error: {
+          message: "Delete failed: No rows were affected. Please check database permissions (RLS) or ensure the route exists.",
+          code: "NO_ROWS_AFFECTED"
+        } as any
+      };
+    }
+
+    console.log("deleteRoute: Successfully deleted route:", data);
     return { data, error: null };
   } catch (err) {
     console.error("deleteRoute exception:", err);

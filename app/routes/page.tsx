@@ -110,10 +110,10 @@ export default function RoutesPage() {
   const pickerMapRef = useRef<google.maps.Map | null>(null);
 
   // Log the Google Maps API key for debugging
-  console.log(
-    "Google Maps API Key:",
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-  );
+  // console.log(
+  //   "Google Maps API Key:",
+  //   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  // );
 
   // Load Google Maps script
   const { isLoaded, loadError } = useLoadScript({
@@ -1186,6 +1186,45 @@ export default function RoutesPage() {
               >
                 ✕
               </AntButton>
+            </div>
+          </div>
+          <div
+            style={{
+              background: "linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(14, 165, 233, 0.08) 100%)",
+              borderRadius: "14px",
+              padding: "16px 20px",
+              marginBottom: "20px",
+              border: "1px solid rgba(6, 182, 212, 0.2)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+              <div style={{ width: "26px", height: "26px", borderRadius: "8px", background: "linear-gradient(135deg, #06b6d4 0%, #0ea5e9 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px" }}>
+                💡
+              </div>
+              <div style={{ fontWeight: 700, fontSize: "13px", color: "#0891b2" }}>How to Add a Route</div>
+            </div>
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", flex: "1 1 180px", minWidth: "180px" }}>
+                <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#f093fb", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>1</div>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b", marginBottom: "2px" }}>Enter Route Info</div>
+                  <div style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.4 }}>Add a name and set start/end points using "<strong>Pick on Map</strong>" or type addresses</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", flex: "1 1 180px", minWidth: "180px" }}>
+                <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#6366f1", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>2</div>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b", marginBottom: "2px" }}>Generate Routes</div>
+                  <div style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.4 }}>Click "<strong>🔍 Generate Routes</strong>" to find available driving paths</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", flex: "1 1 180px", minWidth: "180px" }}>
+                <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#10b981", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>3</div>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b", marginBottom: "2px" }}>Select & Save</div>
+                  <div style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.4 }}>Choose your preferred route from the options, then click "<strong>Save Route</strong>"</div>
+                </div>
+              </div>
             </div>
           </div>
 
